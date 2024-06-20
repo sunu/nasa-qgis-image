@@ -3,14 +3,17 @@ name: Build and push container image
 on:
   push:
     branches:
-      - main
-  pull_request:
-    branches:
-      - main
+      - qgis-proxy-image-build
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: sunu/nasa-qgis-image
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
 
     # For biggish images, github actions runs out of disk space.
@@ -26,25 +29,30 @@ jobs:
     - name: Checkout files in repo
       uses: actions/checkout@main
 
-    - name: Build the image and push to quay.io if not a pull request
+    - name: Log in to the container registry
+      uses: docker/login-action@v3
+      with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        install: true
+
+    - name: Build and push container image
       uses: jupyterhub/repo2docker-action@master
       with:
+        DOCKER_USERNAME: ${{ github.actor }}
+        DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        DOCKER_REGISTRY: ${{ env.REGISTRY }}
+        IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        LATEST_TAG_OFF: true
+        REPO_DIR: /srv/repo
         # Don't push the image during a PR build
         NO_PUSH: "${{ github.event_name == 'pull_request' }}"
-        # Make sure username & password/token pair matches your registry credentials
-        DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
-        DOCKER_REGISTRY: "quay.io"
-        # Disable pushing a 'latest' tag, as this often just causes confusion
-        LATEST_TAG_OFF: true
-        # Put repo contents in /srv/repo, rather than the default (/home/jovyan). The home directory
-        # is mounted over by persistent storage when we are using the built image in a JupyterHub, and
-        # so all contents put in /home/jovyan are lost. This particularly prevents any 'start' script from
-        # working, as it is needed in runtime.
-        REPO_DIR: /srv/repo
-        #
-        # Uncomment and modify the following line with your image name, otherwise no push will happen
-        IMAGE_NAME: "2i2c/nasa-qgis-image"
 
     # Lets us monitor disks getting full as images get bigger over time
     - name: Show how much disk space is left
